@@ -1,0 +1,280 @@
+<?php
+
+/**
+ * Implements hook_video_embed_handler_info().
+ */
+function video_embed_wowza_video_embed_handler_info() {
+  $handlers = array();
+  $handlers['wowza'] = array(
+    'title' => 'Wowza',
+    'function' => 'video_embed_wowza_handle_video',
+    'data_function' => 'video_embed_wowza_handle_data',
+    'thumbnail_default' => drupal_get_path('module', 'video_embed_wowza') . '/img/wowza.png',
+    'form' => 'video_embed_wowza_form',
+    'form_validate' => 'video_embed_field_handler_wowza_form_validate',
+    'domains' => explode("\n", variable_get('video_embed_wowza_domains', '')),
+    'defaults' => array(
+      'width' => 640,
+      'height' => 360,
+      'class' => '',
+      'audio_only' => 0,
+      'autoplay' => 0,
+      'loop' => 0,
+      'mute' => 0,
+      'volume' => 75,
+      'quick_rewind' => 1,
+      'quick_rewind_seconds' => 30,
+    ),
+  );
+
+  return $handlers;
+}
+
+/**
+ * Defines the form elements for the Wowza videos configuration form.
+ *
+ * @param array $defaults
+ *   The form default values.
+ *
+ * @return array
+ *   The provider settings form array.
+ */
+function video_embed_wowza_form($defaults) {
+  $form = array();
+
+  $form['width'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Player Width'),
+    '#description' => t('The width of the player.'),
+    '#default_value' => $defaults['width'],
+  );
+
+  $form['height'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Player Height'),
+    '#description' => t('The height of the player.'),
+    '#default_value' => $defaults['height'],
+  );
+
+  $form['class'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Player CSS class'),
+    '#description' => t('CSS class to add to the player'),
+    '#default_value' => $defaults['class'],
+  );
+
+  $form['audio_only'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Audio Only'),
+    '#description' => t('Disable video.'),
+    '#default_value' => $defaults['audio_only'],
+  );
+
+  $form['autoplay'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Autoplay'),
+    '#description' => t('Play the video immediately.'),
+    '#default_value' => $defaults['autoplay'],
+  );
+
+  $form['loop'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Loop'),
+    '#description' => t("Loop the video's playback"),
+    '#default_value' => $defaults['loop'],
+  );
+
+  $form['mute'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Mute'),
+    '#description' => t('Disable audio.'),
+    '#default_value' => $defaults['mute'],
+  );
+
+  $form['volume'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Volume'),
+    '#description' => t('The starting volume of the player.'),
+    '#default_value' => $defaults['volume'],
+  );
+
+  $form['quick_rewind'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Quick rewind'),
+    '#description' => t('Enable quick rewind.'),
+    '#default_value' => $defaults['quick_rewind'],
+  );
+
+  $form['quick_rewind_seconds'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Volume'),
+    '#description' => t('Number of seconds for the quick rewind button if enabled.'),
+    '#default_value' => $defaults['quick_rewind_seconds'],
+  );
+
+  return $form;
+}
+
+/**
+ * Validates the form elements for the Wowza video configuration form.
+ *
+ * @param array $element
+ *   The form element to validate.
+ * @param array $form_state
+ *   The form to validate state.
+ * @param array $form
+ *   The form to validate structure.
+ */
+function video_embed_field_handler_wowza_form_validate($element, &$form_state, $form) {
+  video_embed_field_validate_dimensions($element);
+}
+
+/**
+ * Handler for Wowza videos.
+ *
+ * @param string $url
+ *   The video URL.
+ * @param array $settings
+ *   The settings array.
+ *
+ * @return array|bool
+ *   The video render element, or FALSE in case the ID can't be retrieved from the URL.
+ */
+function video_embed_wowza_handle_video($url, $settings) {
+  $base_url = _video_embed_wowza_get_video_base_url($url);
+
+  if ($base_url) {
+
+    $player_id = drupal_html_id($url);
+
+    $embed= <<<'EOD'
+<div id="!playerid" style="width:100%; height:0; padding:0 0 56.25% 0"></div>
+
+<script type="text/javascript">
+WowzaPlayer.create("!playerid",
+    {
+    "license": "@license",
+    "sourceURL": "@url",
+    "audioOnly": @audioonly,
+    "autoPlay": @autoplay,
+    "volume": @volume,
+    "mute": @mute,
+    "loop": @loop,
+    "uiShowQuickRewind": @quickrewind,
+    "uiQuickRewindSeconds": @quickrewindseconds
+    }
+);
+</script>
+EOD;
+
+    // Use format_string to replace our placeholders with the settings values.
+    $embed = format_string($embed, array(
+      '@license' => variable_get('video_embed_wowza_license', ''),
+      '@url' => rawurlencode($base_url . '/playlist.m3u8'),
+      '!playerid' => $player_id,
+      '@width' => $settings['width'],
+      '@height' => $settings['height'],
+      '@class' => $settings['class'],
+      '@audioonly' => $settings['audio_only'],
+      '@autoplay' => $settings['autoplay'],
+      '@mute' => $settings['mute'],
+      '@loop' => $settings['loop'],
+      '@volume' => $settings['volume'],
+      '@quickrewind' => $settings['quick_rewind'],
+      '@quickrewindseconds' => $settings['quick_rewind_seconds'],
+    ));
+
+    $video = array(
+      '#markup' => $embed,
+      '#attached' => array(
+        'js' => array(
+          '//player.wowza.com/player/latest/wowzaplayer.min.js' => array(
+            'type' => 'external',
+          ),
+        ),
+      ),
+    );
+
+
+    return $video;
+  }
+
+  return FALSE;
+}
+
+/**
+ * Gets video data for Wowza.
+ *
+ * @param string $url
+ *   A Wowza URL to get data for
+ *
+ * @return array|bool
+ *   An array of video data, or FALSE if unable to fetch data
+ */
+function video_embed_wowza_handle_data($url) {
+
+  $data = FALSE;
+
+  $base_url = _video_embed_wowza_get_video_base_url($url);
+
+  if ($base_url) {
+    $response = drupal_http_request($base_url . '/manifest.f4m');
+    if (!isset($response->error)) {
+      $data = json_decode(json_encode(simplexml_load_string($response->data)), TRUE);
+    }
+  }
+
+  return $data;
+}
+
+/**
+ * Helper function to get the Wowza video's id.
+ *
+ * @param string $url
+ *   The video URL.
+ *
+ * @return string|bool
+ *   The video ID, or FALSE in case the ID can't be retrieved from the URL.
+ */
+function _video_embed_wowza_get_video_base_url($url) {
+  $base_url = FALSE;
+  $matches = array();
+  if (preg_match("/(?P<baseurl>.*1935\/live\/[^\/]+).*/", $url, $matches) === 1) {
+    $base_url = $matches['baseurl'];
+  }
+  return $base_url;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function video_embed_wowza_form_video_embed_field_settings_form_alter(&$form, &$form_state, $form_id) {
+  $form['video_embed_wowza_license'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Wowza license'),
+    '#default_value' => variable_get('video_embed_wowza_license', ''),
+  );
+  $form['video_embed_wowza_domains'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Wowza domains'),
+    '#description' => t('Enter one URL per line.'),
+    '#default_value' => variable_get('video_embed_wowza_domains', ''),
+    '#rows' => 2,
+    '#wysiwyg' => FALSE,
+    '#element_validate' => array('video_embed_wowza_validate_domains'),
+  );
+}
+
+/**
+ * Validate the domains element.
+ */
+function video_embed_wowza_validate_domains($element, &$form_state) {
+  $urls = preg_split('/[\r\n]+/', $element['#value'], -1, PREG_SPLIT_NO_EMPTY);
+  foreach ($urls as $url) {
+    if (!valid_url($url)) {
+      form_error($element, t('Invalid URL %url.', array('%url' => $url)));
+    }
+  }
+  $form_state['values']['video_embed_wowza_domains'] = implode("\n", $urls);
+}
+
