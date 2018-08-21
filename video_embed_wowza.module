@@ -239,7 +239,7 @@ function video_embed_wowza_handle_data($url) {
 function _video_embed_wowza_get_video_base_url($url) {
   $base_url = FALSE;
   $matches = array();
-  if (preg_match("/(?P<baseurl>.*1935\/live\/[^\/]+).*/", $url, $matches) === 1) {
+  if (preg_match("/(?P<baseurl>.*\/live\/[^\/]+).*/", $url, $matches) === 1) {
     $base_url = $matches['baseurl'];
   }
   return $base_url;
